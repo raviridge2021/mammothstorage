@@ -1,0 +1,184 @@
+.container {
+    max-width: 1366px;
+}
+  .btn-custom-primary {
+    background: #D02729;
+    color: white;
+    border: 1px solid #D02729;
+    transition: background 0.3s ease, color 0.3s ease, border 0.3s ease;
+}
+
+.btn-custom-primary:hover {
+    background: #A62224; /* Darker shade for hover */
+    color: #fff;
+    border-color: #A62224;
+}
+
+
+/* Apply background to inactive tabs */
+.nav-item-custom {
+    background: #f9f9f9 !important; /* Light background for inactive tabs */
+    transition: background 0.3s ease; /* Smooth transition */
+}
+
+/* Styling the active button within #myTab */
+#myTab .nav-link.active {
+    background: #D02729;
+    color: white;
+    border: 1px solid #D02729; /* Optional: border matching background */
+}
+
+/* Hover effect for non-active nav-link buttons in #myTab */
+#myTab .nav-link {
+    color: #D02729; /* Text color on hover */
+}
+
+
+/* Hover effect for non-active nav-link buttons in #myTab */
+#myTab .nav-link:not(.active):hover {
+    border: 1px solid #D02729; /* Border color on hover */
+    color: #D02729; /* Text color on hover */
+    background-color: #f9f9f9; /* Optional: light background for hover */
+    transition: background-color 0.3s ease, color 0.3s ease, border 0.3s ease; /* Smooth transition */
+}
+
+
+/* Hover effect for non-active nav-link buttons in #myTab */
+#myTab .nav-link.active:hover {
+    background: #A62224; /* Darker shade for hover */
+}
+
+
+/* Table Wrapper */
+.dataTables_wrapper .dataTable {
+    border-collapse: collapse;
+    width: 100%;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+}
+
+/* Header Styling */
+.dataTables_wrapper .dataTable thead th {
+    background-color: #D02729; /* Primary red for header background */
+    color: white;
+    font-weight: bold;
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 3px solid #A62224; /* Darker red for a solid, professional divider */
+}
+
+/* Body Row Styling */
+.dataTables_wrapper .dataTable tbody tr {
+    background-color: #f9f9f9; /* Light background for rows */
+    color: #333;
+    border-bottom: 1px solid #ddd; /* Subtle border between rows */
+}
+
+/* Alternating Row Colors for Professional Look */
+.dataTables_wrapper .dataTable tbody tr:nth-child(even) {
+    background-color: #f3f3f3; /* Slightly different shade for alternate rows */
+}
+
+/* Hover Effect for Rows */
+.dataTables_wrapper .dataTable tbody tr:hover {
+    background-color: #A62224; /* Darker red for row hover */
+    color: white;
+    transition: background-color 0.3s ease;
+}
+
+/* Table Cells */
+.dataTables_wrapper .dataTable tbody td {
+    padding: 10px 15px;
+    border-top: 1px solid #ddd; /* Light border for separation */
+}
+
+/* Selected Row */
+.dataTables_wrapper .dataTable tbody tr.selected,
+.dataTables_wrapper .dataTable tbody tr:active {
+    background-color: #D02729; /* Primary red for active row */
+    color: white;
+}
+
+/* Footer and Pagination Buttons */
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+    color: #333; /* Neutral color for text in footer */
+    font-weight: 500;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+    background: #f1f1f1; /* Light background for pagination */
+    border: 1px solid #ddd;
+    margin: 2px;
+    padding: 5px 10px;
+    border-radius: 4px;
+    transition: all 0.3s ease;
+}
+
+/* Hover Effect for Pagination Buttons */
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+    background-color: #D02729;
+    color: white;
+}
+
+/* Active Pagination Button */
+.dataTables_wrapper .dataTables_paginate .paginate_button.current,
+.dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
+    background-color: #A62224;
+    color: white;
+    font-weight: bold;
+}
+
+/* Search Box and Dropdown Styling */
+.dataTables_wrapper .dataTables_filter input,
+.dataTables_wrapper .dataTables_length select {
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    outline: none;
+    transition: border-color 0.3s ease;
+}
+
+.dataTables_wrapper .dataTables_filter input:focus,
+.dataTables_wrapper .dataTables_length select:focus {
+    border-color: #D02729;
+}
+
+
+/* Hover Effect for Rows - Update to Target Each td */
+.dataTables_wrapper .dataTable tbody tr:hover {
+    background-color: #A62224; /* Darker red on row hover */
+    color: white; /* White text for all td on hover */
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Ensure individual td elements also get white color on row hover */
+.dataTables_wrapper .dataTable tbody tr:hover td {
+    color: white; /* Apply white text to each td when row is hovered */
+}
+
+.card-body-custom {
+    background: #f9f9f9;
+}
+
+.card-body-custom:hover {
+    background: #D02729;
+    color: white;
+}
+
+.card-body-custom:hover h5,
+.card-body-custom:hover h5 i,
+.card-body-custom:hover h5.text-danger {
+    color: white !important; /* Ensures h5 text, icons, and text-danger class turn white on hover */
+}
+
+
+.carousel-button-custom {
+
+    background: #D02729;
+}
+
+.carousel-button-custom:hover {
+    background: #D02729;
+    color:white;
+}
