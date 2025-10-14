@@ -34,9 +34,9 @@ class EmailController extends CI_Controller
             $smtpData = array(
                 'smtpHost' => "smtp.gmail.com",  // Updated to match Google Workspace SMTP server
                 'smtpPort' => 587,               // Use port 587 with TLS for secure connection
-                'smtpUsername' => "10hello@mammothstorage.com.au",
+                'smtpUsername' => "hello@mammothstorage.com.au",
                 'smtpPassword' => "ycpl dsjd xtkr hpss",
-                'smtpFromEmail' => "10hello@mammothstorage.com.au",
+                'smtpFromEmail' => "hello@mammothstorage.com.au",
                 'smtpFromName' => "Mammoth Storage"
             );
 
@@ -76,7 +76,7 @@ class EmailController extends CI_Controller
             //$mail->addReplyTo('info@example.com', 'CodexWorld');
 
             // Add a recipient
-            $mail->addAddress("10hello@mammothstorage.com.au");
+            $mail->addAddress("hello@mammothstorage.com.au");
             // Add cc or bcc
             // $mail->addCC('cc@example.com');
             // $mail->addBCC('bcc@example.com');
@@ -158,9 +158,9 @@ class EmailController extends CI_Controller
             $smtpData = array(
                 'smtpHost' => "smtp.gmail.com",  // Updated to match Google Workspace SMTP server
                 'smtpPort' => 587,               // Use port 587 with TLS for secure connection
-                'smtpUsername' => "10hello@mammothstorage.com.au",
+                'smtpUsername' => "hello@mammothstorage.com.au",
                 'smtpPassword' => "ycpl dsjd xtkr hpss",
-                'smtpFromEmail' => "10hello@mammothstorage.com.au",
+                'smtpFromEmail' => "hello@mammothstorage.com.au",
                 'smtpFromName' => "Mammoth Storage"
             );
 
@@ -284,9 +284,9 @@ class EmailController extends CI_Controller
             $smtpData = array(
                 'smtpHost' => "smtp.gmail.com",  // Update to match your SMTP server
                 'smtpPort' => 587,
-                'smtpUsername' => "10hello@mammothstorage.com.au",
+                'smtpUsername' => "hello@mammothstorage.com.au",
                 'smtpPassword' => "ycpl dsjd xtkr hpss",
-                'smtpFromEmail' => "10hello@mammothstorage.com.au",
+                'smtpFromEmail' => "hello@mammothstorage.com.au",
                 'smtpFromName' => "Mammoth Storage"
             );
 

@@ -627,6 +627,83 @@
   <script src="<?php echo base_url('assets/js/ajax/custom.js'); ?>"></script>
   <script src="<?php echo base_url('assets/js/ajax/tabs.js'); ?>"></script>
 
+  <!-- Moveout Payment Modal -->
+<div class="modal fade" id="moveout-payment-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Make a Payment (Move Out)</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <div id="moveout-payment-message" class="alert" style="display:none;"></div>
+
+        <form id="moveout-payment-form" class="position-relative">
+
+          <div id="moveout-payment-loader" class="spinner-overlay" style="display:none;">
+            <div class="spinner-content">
+              <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                <span class="visually-hidden">Processing...</span>
+              </div>
+              <p class="mt-3 text-muted">Processing payment, please wait...</p>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label for="mo-credit-card-holder" class="form-label">Credit Card Holder's Name*</label>
+            <input type="text" class="form-control" id="mo-credit-card-holder" placeholder="Enter cardholder's name">
+          </div>
+
+          <div class="mb-3">
+            <label for="mo-credit-card-number" class="form-label">Credit Card Number*</label>
+            <input type="text" class="form-control" id="mo-credit-card-number" placeholder="Enter card number">
+          </div>
+
+          <div class="row">
+            <div class="col-6 mb-3">
+              <label for="mo-credit-card-expiry-month" class="form-label">Expiry Month*</label>
+              <select id="mo-credit-card-expiry-month" class="form-select">
+                <option value="">MM</option>
+                <option value="01">01</option><option value="02">02</option><option value="03">03</option>
+                <option value="04">04</option><option value="05">05</option><option value="06">06</option>
+                <option value="07">07</option><option value="08">08</option><option value="09">09</option>
+                <option value="10">10</option><option value="11">11</option><option value="12">12</option>
+              </select>
+            </div>
+            <div class="col-6 mb-3">
+              <label for="mo-credit-card-expiry-year" class="form-label">Expiry Year*</label>
+              <select id="mo-credit-card-expiry-year" class="form-select">
+                <option value="">YYYY</option>
+                <!-- add a sensible range in your template -->
+                <option>2025</option><option>2026</option><option>2027</option><option>2028</option><option>2029</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label for="mo-credit-card-cvv" class="form-label">CVV*</label>
+            <input type="text" class="form-control" id="mo-credit-card-cvv" placeholder="CVV">
+          </div>
+
+          <div class="mb-3">
+            <label for="mo-payment-amount" class="form-label">Payment Amount</label>
+            <input type="number" class="form-control" id="mo-payment-amount" readonly>
+          </div>
+
+          <!-- Hidden linkage back to moveout -->
+          <input type="hidden" id="mo-ledger-id">
+          <input type="hidden" id="mo-scheduled-out">
+
+          <button type="submit" class="btn btn-custom-primary">Process Payment</button>
+        </form>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 </body>
 
 </html>
