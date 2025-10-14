@@ -428,6 +428,7 @@ class PaymentController extends CI_Controller
 
     public function makePayment()
     {
+        
         // Get user session data
         $user_data = $this->session->userdata('user_data');
 
@@ -462,9 +463,10 @@ class PaymentController extends CI_Controller
         $location = $user_data['location'];
 
         if ($paymentOptions == 1) {
+            // echo "1"; die;
             $response = $this->multipleSourcePayment($tenant_id, $location, $creditCardTypeID, $creditCardNum, $creditCardExpire, $creditCardHolderName, $creditCardCVV, $sUnitIDs, $sPaymentAmounts);
         } else if ($paymentOptions == 2) {
-
+            // echo "2"; die;
             $number_of_future_periods = $requestData['numberOfMonths'];
             $response2 = $this->makeFutureAllUnitsCharges($location, $tenant_id, $number_of_future_periods);
 
@@ -538,7 +540,7 @@ class PaymentController extends CI_Controller
     private function multipleSourcePayment($tenant_id, $location, $creditCardTypeID, $creditCardNum, $creditCardExpire, $creditCardHolderName, $creditCardCVV, $sUnitIDs, $sPaymentAmounts)
     {
         $curl = curl_init();
-
+        echo "<pre>"; print_r($sUnitIDs); die;
         curl_setopt_array($curl, array(
             CURLOPT_URL => 'https://api.smdservers.net/CCWs_3.5/CallCenterWs.asmx',
             CURLOPT_RETURNTRANSFER => true,

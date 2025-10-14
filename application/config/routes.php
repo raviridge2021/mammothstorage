@@ -84,3 +84,8 @@ $route['reset/update_Password'] = 'LoginController/updateAccountPassword';
 
 $route['login/authenticate'] = 'LoginController/authenticate';
 $route['logout'] = 'LoginController/logout';
+
+$route['schedule/process-payment'] = 'MoveoutController/processPayment';
+
+// Cache management route
+$route['cron/schedule-moveout-reminders'] = 'ScheduleMoveoutCroneController/scheduleMoveoutReminders';

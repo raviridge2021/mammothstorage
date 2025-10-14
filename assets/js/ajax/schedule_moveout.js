@@ -63,12 +63,12 @@ $(document).ready(function () {
     const currentDate = new Date().toLocaleString("en-US", { timeZone: "Australia/Brisbane" });
     const currentDateObj = new Date(currentDate);
     let selectedDate = null; // Variable to store the selected date
-    let dateScheduledOutWithCancel = false; // Default value
+    
     // Initialize the inline date picker
     $('#inline-datepicker').datepicker({
         startDate: currentDateObj, // Prevent past dates
         todayHighlight: true,      // Highlight today's date
-        format: "yyyy-mm-dd",      // Set date format
+		format: "dd/mm/yyyy",      // Display format
         autoclose: true            // Close when date is selected
     }).on('changeDate', function (e) {
         selectedDate = new Date(e.date); // Update selected date
@@ -91,7 +91,6 @@ $(document).ready(function () {
         return true; // Return true if the date is valid
     }
 
-
     // Function to format the date as yyyy-mm-dd without timezone conversion
     function formatDate(date) {
         const year = date.getFullYear();
@@ -100,6 +99,163 @@ $(document).ready(function () {
         return `${year}-${month}-${day}`;
     }
 
+	// Convert API date string YYYY-MM-DD to display DD/MM/YYYY
+	function apiToDisplay(dateStr) {
+		if (typeof dateStr === 'string') {
+			// Extract YYYY-MM-DD from start of string, supports 'YYYY-MM-DD', 'YYYY-MM-DDTHH:MM:SS', 'YYYY-MM-DD HH:MM:SS'
+			var match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+			if (match) {
+				var y = match[1];
+				var m = match[2];
+				var d = match[3];
+				return `${d}/${m}/${y}`;
+			}
+		}
+		return dateStr;
+	}
+
+	// Convert display date string DD/MM/YYYY to API YYYY-MM-DD
+		// Convert display date string DD/MM/YYYY to API YYYY-MM-DD
+        function displayToApi(dateStr) {
+            if (typeof dateStr === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+                const [d, m, y] = dateStr.split('/');
+                return `${y}-${m}-${d}`;
+            }
+            return dateStr;
+        }
+    
+        // Helper: parse currency text like "$1,234.56" to 1234.56
+        function parseCurrency(str) {
+            if (!str) return 0;
+            // Remove anything that's not digit or dot
+            var cleaned = String(str).replace(/[^0-9.]/g, '');
+            var num = parseFloat(cleaned);
+            return isNaN(num) ? 0 : num;
+        }
+
+    	// NEW: Function to show rent calculation with your exact formula
+	function showRentCalculation(rentData) {
+		const rentDue = rentData.rent_due;
+		const paidThrough = apiToDisplay(rentData.paid_through_date);
+		const scheduledOut = apiToDisplay(rentData.scheduled_out_date);
+		const daysBetween = rentData.days_between;
+		const dailyRate = rentData.daily_rate;
+		const monthlyRate = rentData.monthly_rate;
+		const annualRate = rentData.annual_rate;
+
+		// Read Total Current Due from the profile card
+		const currentDueText = $('#tenant-total-due').text();
+		const totalCurrentDue = parseCurrency(currentDueText);
+
+		// Compute combined total owing (rent due to move out + current due)
+		const totalOwing = (parseFloat(rentDue) || 0) + (parseFloat(totalCurrentDue) || 0);
+
+		Swal.fire({
+			title: 'Rent Payment Required',
+			html: `
+				<div class="text-start">
+					<h5>Rent Calculation Details:</h5>
+					<div class="row mb-3">
+						<div class="col-6">
+							<p><strong>Paid Through Date:</strong><br>${paidThrough}</p>
+							<p><strong>Scheduled Move Out:</strong><br>${scheduledOut}</p>
+						</div>
+						<div class="col-6">
+							<p><strong>Days Owing:</strong><br>${daysBetween} days</p>
+							<p><strong>Monthly Rental Rate:</strong><br>$${Number(monthlyRate).toFixed(2)}</p>
+						</div>
+					</div>
+					<div class="card bg-light p-3 mb-3">
+						<p class="mb-1"><strong>Rent Owing to Move Out:</strong> $${Number(rentDue).toFixed(2)}</p>
+						<p class="mb-1 text-muted"><strong>+ Total Current Due:</strong> $${Number(totalCurrentDue).toFixed(2)}</p>
+						<h4 class="text-primary mt-2"><strong>Total Owing: $${totalOwing.toFixed(2)}</strong></h4>
+					</div>
+					<p class="text-muted">Payment is required before scheduling your move out.</p>
+				</div>
+			`,
+			icon: 'info',
+			showCancelButton: true,
+			confirmButtonText: 'Proceed to Payment',
+			cancelButtonText: 'Cancel',
+			confirmButtonColor: '#D02729',
+			cancelButtonColor: '#6c757d',
+			width: '700px'
+		}).then((result) => {
+			if (result.isConfirmed) {
+				// Open payment modal with combined total
+				openMoveoutPaymentModal(totalOwing, rentData);
+			}
+		});
+	}
+
+        // NEW: Function to process payment with real payment gateway
+        function processPayment(amount, rentData) {
+            Swal.fire({
+                title: 'Processing Payment',
+                html: `
+                    <div class="text-center">
+                        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                            <span class="visually-hidden">Processing...</span>
+                        </div>
+                        <p>Processing payment of <strong>$${amount}</strong>...</p>
+                        <p class="text-muted">Please wait while we process your payment.</p>
+                    </div>
+                `,
+                showConfirmButton: false,
+                allowOutsideClick: false,
+                timer: 3000
+            }).then(() => {
+                // Make actual payment API call
+                makePaymentAPI(amount, rentData);
+            });
+        }
+
+    // NEW: Function to make payment API call
+        // NEW: Function to make payment API call
+        function makePaymentAPI(amount, rentData) {
+            // Gather form data for payment
+            var paymentData = {
+                ledgerID: $('#add-to-account-unit2').find(':selected').data('ledger-id'),
+                amount: amount,
+                dateScheduledOut: formatDate(selectedDate)
+            };
+    
+            // AJAX call to process payment
+            $.ajax({
+                url: site_url + 'schedule/process-payment', // New payment endpoint
+                type: 'POST',
+                contentType: 'application/json',
+                dataType: 'json',
+                data: JSON.stringify(paymentData),
+                success: function (response) {
+                    if (response.success) {
+                        Swal.fire({
+                            title: 'Payment Successful!',
+                            text: 'Your payment has been processed successfully. Your moveout has been scheduled.',
+                            icon: 'success',
+                            confirmButtonText: 'Great!',
+                            timer: 5000,
+                            timerProgressBar: true
+                        });
+                    } else {
+                        Swal.fire({
+                            title: 'Payment Failed',
+                            text: 'Error: ' + response.error,
+                            icon: 'error',
+                            confirmButtonText: 'Try Again'
+                        });
+                    }
+                },
+                error: function (xhr, status, error) {
+                    Swal.fire({
+                        title: 'Payment Error',
+                        text: 'Error processing payment: ' + error,
+                        icon: 'error',
+                        confirmButtonText: 'Try Again'
+                    });
+                }
+            });
+        }
 
     // Form submission with spinner and AJAX
     $('#schedule-moveout-form').on('submit', function (e) {
@@ -131,35 +287,19 @@ $(document).ready(function () {
             return; // Stop form submission if validation fails
         }
 
+        // Show the form loader overlay
+        $('#schedule-moveout-loader').show();
 
-        Swal.fire({
-            title: 'Choose Your Action',
-            text: 'Do you want to schedule your move out date for 14 days in advance?',
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'Move Out',
-            cancelButtonText: 'Cancel Move Out',
-            reverseButtons: true,
-            showCloseButton: true, // Enable the default close button
-            customClass: {
-                confirmButton: 'btn-custom-primary', // Custom class for Moveout button
-                cancelButton: 'btn-cancel',  // Custom class for Cancel button
-                denyButton: 'btn-close',     // Custom class for Close button
-            },
-        }).then((result) => {
-            if (result.isConfirmed) {
-                // Moveout button clicked
-                submitForm(false); // Pass false for dateScheduledOutWithCancel
-            } else if (result.dismiss === Swal.DismissReason.cancel) {
-                // Cancel button clicked
-                submitForm(true); // Pass true for dateScheduledOutWithCancel
-            }
-        });
+        // Gather form data, including the selected date and cancel flag
+        var formData = {
+            ledgerID: $('#add-to-account-unit2').find(':selected').data('ledger-id'),
+            dateScheduledOut: formatDate(selectedDate), // Manually format date as yyyy-mm-dd
+            dateScheduledOutWithCancel: false // Always false for new moveouts
+        };
 
-        /*
         // AJAX call to submit the form
         $.ajax({
-            url: site_url + 'schedule/moveout',  // Your controller function route
+            url: site_url + 'schedule/moveout', // Your controller function route
             type: 'POST',
             contentType: 'application/json',
             dataType: 'json',
@@ -173,12 +313,14 @@ $(document).ready(function () {
                     Swal.fire({
                         icon: 'success',
                         title: 'Success!',
-                        text: 'Your move out has been successfully scheduled. You will receive a confirmation email shortly.',
+                        text: 'Your moveout has been successfully scheduled. You will receive a confirmation email shortly.',
                         confirmButtonText: 'Great!',
-                        timer: 5000, // Optional: auto-close after 5 seconds
+                        timer: 5000,
                         timerProgressBar: true
                     });
-
+                } else if (response.requires_payment) {
+                    // Show rent calculation and payment prompt
+                    showRentCalculation(response.rent_calculation);
                 } else {
                     $('#response-message4')
                         .addClass('alert-danger')
@@ -193,7 +335,7 @@ $(document).ready(function () {
                     .text('Error submitting form: ' + error)
                     .show();
             }
-        });*/
+        });
     });
 
     function submitForm(dateScheduledOutWithCancel) {
@@ -251,5 +393,182 @@ $(document).ready(function () {
                     .show();
             }
         });
+    }
+
+    // Attach once
+    $(document).on('submit', '#moveout-payment-form', function (e) {
+        e.preventDefault();
+
+        $('#moveout-payment-message').removeClass('alert-success alert-danger').hide();
+
+        // Basic validation
+        var name = $('#mo-credit-card-holder').val();
+        var number = $('#mo-credit-card-number').val();
+        var month = $('#mo-credit-card-expiry-month').val();
+        var year = $('#mo-credit-card-expiry-year').val();
+        var cvv = $('#mo-credit-card-cvv').val();
+        var amount = parseFloat($('#mo-payment-amount').val());
+
+        // IMPORTANT: UnitID vs LedgerID
+        var unitID = $('#add-to-account-unit2').val(); // UnitID comes from the select value
+        var ledgerID = $('#mo-ledger-id').val();       // LedgerID is used only for scheduling moveout
+
+        var dateScheduledOut = displayToApi($('#mo-scheduled-out').val());
+
+        if (!name || !number || !month || !year || !cvv || !amount || !unitID || !ledgerID || !dateScheduledOut) {
+            $('#moveout-payment-message').addClass('alert-danger').text('Please fill in all required fields.').show();
+            return;
+        }
+
+        // Read the same card-type value that Make a Payment uses
+        var selectedCreditCardOption = $('#credit-card-type').find(':selected');
+        var paymentTypeData = selectedCreditCardOption.data('payment-type') || 1;
+
+        // Show loader
+        $('#moveout-payment-loader').show();
+
+        // Build payload exactly like Make a Payment module, using UnitID(s)
+        var formData = {
+            creditCardTypeID: paymentTypeData,
+            creditCardNum: number,
+            creditCardExpire: year + '-' + month, // YYYY-MM (matches existing module)
+            creditCardHolderName: name,
+            creditCardCVV: cvv,
+            paymentOptions: 1,
+            sUnitIDs: String(unitID),              // <-- MUST be UnitID, not LedgerID
+            sPaymentAmounts: amount.toFixed(2)
+        };
+
+        // First: real payment
+        $.ajax({
+            url: site_url + 'payment/make_payment',
+            type: 'POST',
+            contentType: 'application/json',
+            dataType: 'json',
+            data: JSON.stringify(formData),
+            success: function (payResponse) {
+                if (payResponse && payResponse.success) {
+                    // Hide modal loader and show progress popup
+                    $('#moveout-payment-loader').hide();
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Payment Successful',
+                        html: '<div class="text-center"><p>Scheduling your move out now...</p><br><p>Please do not refresh or close this page while it’s loading Your request is being processed. Thank you for your patience.</p><div class="spinner-border text-primary" role="status" style="width: 2.5rem; height: 2.5rem;"><span class="visually-hidden">Loading...</span></div></div>',
+                        allowOutsideClick: false,
+                        showConfirmButton: false
+                    });
+                    // Second: schedule moveout after 10s delay to allow payment to reflect in ledger
+                    setTimeout(function () {
+                        $.ajax({
+                            url: site_url + 'schedule/moveout',
+                            type: 'POST',
+                            contentType: 'application/json',
+                            dataType: 'json',
+                            data: JSON.stringify({
+                                ledgerID: ledgerID,
+                                dateScheduledOut: dateScheduledOut,
+                                dateScheduledOutWithCancel: false
+                            }),
+                            success: function (moResponse) {
+                                // Close progress popup
+                                Swal.close();
+
+                                if (moResponse && moResponse.success) {
+                                    var modalEl = document.getElementById('moveout-payment-modal');
+                                    var modal = bootstrap.Modal.getInstance(modalEl);
+                                    modal.hide();
+
+                                    Swal.fire({
+                                        icon: 'success',
+                                        title: 'Payment Successful!',
+                                        text: 'Your payment has been processed and your move out is scheduled.',
+                                        confirmButtonText: 'Great!',
+                                        timer: 5000,
+                                        timerProgressBar: true
+                                    });
+                                } else {
+                                    Swal.fire({
+                                        icon: 'error',
+                                        title: 'Scheduling Failed',
+                                        text: (moResponse && moResponse.error ? moResponse.error : (moResponse && moResponse.requires_payment ? 'Payment still required. Please wait and try again.' : 'Unknown error')),
+                                        confirmButtonText: 'OK'
+                                    });
+                                }
+                            },
+                            error: function (xhr, status, error) {
+                                Swal.close();
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Scheduling Error',
+                                    text: 'Move out scheduling error: ' + error,
+                                    confirmButtonText: 'OK'
+                                });
+                            }
+                        });
+                    }, 10000);
+                } else {
+                    var errorText = (payResponse && payResponse.error ? payResponse.error : 'Unknown error');
+
+                    // If no payment is needed (complimentary unit), continue to schedule moveout
+                    if (/no payment needed/i.test(errorText)) {
+                        $.ajax({
+                            url: site_url + 'schedule/moveout',
+                            type: 'POST',
+                            contentType: 'application/json',
+                            dataType: 'json',
+                            data: JSON.stringify({
+                                ledgerID: ledgerID,
+                                dateScheduledOut: dateScheduledOut,
+                                dateScheduledOutWithCancel: false
+                            }),
+                            success: function (moResponse) {
+                                $('#moveout-payment-loader').hide();
+
+                                if (moResponse && moResponse.success) {
+                                    var modalEl = document.getElementById('moveout-payment-modal');
+                                    var modal = bootstrap.Modal.getInstance(modalEl);
+                                    modal.hide();
+
+                                    Swal.fire({
+                                        icon: 'info',
+                                        title: 'No Payment Needed',
+                                        text: 'This unit is complimentary. Your move out has been scheduled.',
+                                        confirmButtonText: 'OK'
+                                    });
+                                } else {
+                                    $('#moveout-payment-message').addClass('alert-danger').text('Move out scheduling failed: ' + (moResponse && moResponse.error ? moResponse.error : 'Unknown error')).show();
+                                }
+                            },
+                            error: function (xhr, status, error) {
+                                $('#moveout-payment-loader').hide();
+                                $('#moveout-payment-message').addClass('alert-danger').text('Move out scheduling error: ' + error).show();
+                            }
+                        });
+                        return;
+                    }
+
+                    $('#moveout-payment-loader').hide();
+                    $('#moveout-payment-message').addClass('alert-danger').text('Payment failed: ' + errorText).show();
+                }
+            },
+            error: function (xhr, status, error) {
+                $('#moveout-payment-loader').hide();
+                $('#moveout-payment-message').addClass('alert-danger').text('Payment error: ' + error).show();
+            }
+        });
+    });
+
+    function openMoveoutPaymentModal(amount, rentData) {
+        // Prefill amount and linkage fields with proper formatting
+        $('#mo-payment-amount').val(amount.toFixed(2));
+        $('#mo-ledger-id').val($('#add-to-account-unit2').find(':selected').data('ledger-id'));
+		$('#mo-scheduled-out').val(apiToDisplay(rentData.scheduled_out_date));
+
+        // Clear messages
+        $('#moveout-payment-message').removeClass('alert-success alert-danger').hide();
+
+        // Show modal (Bootstrap 5)
+        var modal = new bootstrap.Modal(document.getElementById('moveout-payment-modal'));
+        modal.show();
     }
 });
