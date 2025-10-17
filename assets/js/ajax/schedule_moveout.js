@@ -148,7 +148,8 @@ $(document).ready(function () {
 		const totalCurrentDue = parseCurrency(currentDueText);
 
 		// Compute combined total owing (rent due to move out + current due)
-		const totalOwing = (parseFloat(rentDue) || 0) + (parseFloat(totalCurrentDue) || 0);
+		// const totalOwing = (parseFloat(rentDue) || 0) + (parseFloat(totalCurrentDue) || 0);
+		const totalOwing = (parseFloat(rentDue) || 0) ;
 
 		Swal.fire({
 			title: 'Rent Payment Required',
@@ -167,7 +168,7 @@ $(document).ready(function () {
 					</div>
 					<div class="card bg-light p-3 mb-3">
 						<p class="mb-1"><strong>Rent Owing to Move Out:</strong> $${Number(rentDue).toFixed(2)}</p>
-						<p class="mb-1 text-muted"><strong>+ Total Current Due:</strong> $${Number(totalCurrentDue).toFixed(2)}</p>
+						<!-- <p class="mb-1 text-muted"><strong>+ Total Current Due:</strong> $${Number(totalCurrentDue).toFixed(2)}</p> --> 
 						<h4 class="text-primary mt-2"><strong>Total Owing: $${totalOwing.toFixed(2)}</strong></h4>
 					</div>
 					<p class="text-muted">Payment is required before scheduling your move out.</p>
