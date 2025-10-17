@@ -16,6 +16,8 @@ class MoveoutController extends CI_Controller
         // Get user session data
         $user_data = $this->session->userdata('user_data');
 
+        // print_r($user_data['location']);die();
+
         // If user is not logged in, return an error
         if (!$user_data || !$user_data['logged_in']) {
             echo json_encode(['success' => false, 'error' => 'User not logged in.']);
@@ -540,7 +542,32 @@ class MoveoutController extends CI_Controller
         $prettyDate = date('d/m/Y', strtotime($moveoutDate));
         $unitDisplay = $unitName !== '' ? $unitName : 'your space';
         $locationDisplay = $locationName !== '' ? $locationName : 'Mammoth Storage';
-        $reviewUrl = 'https://www.google.com/maps/place/Mammoth+Storage+Nambour/@-26.6131889,152.9608031,17z/data=!3m1!4b1!4m6!3m5!1s0x6b937908daba440f:0xf0ed73b0e0089e3c!8m2!3d-26.6131889!4d152.9608031!16s%2Fg%2F11jgz93syd?entry=ttu&g_ep=EgoyMDI1MTAwOC4wIKXMDSoASAFQAw%3D%3D';
+
+        // Map review URLs by location CODE (not name)
+        $reviewMap = [
+            'L001' => 'https://g.page/r/CZLJrF9OKrcmEBM/review',  // Forest Glen
+            'L002' => 'https://g.page/r/CYTDGLMO-ekpEAI/review',  // Maroochydore
+            'L003' => 'https://g.page/r/CTyeCOCwc-3wEAI/review', // Nambour
+            'L004' => 'https://g.page/r/CewXQ35F7WvBEAI/review', // Caloundra
+            'L005' => 'https://g.page/r/CX-D-HGT9u5uEAI/review', // Hervey Bay
+            'L006' => 'https://g.page/r/CRi80PpOTasXEBM/review', // Bundaberg
+            'L007' => 'https://g.page/r/CSSfMhCc2FuYEBM/review', // Kunda Park
+            'L008' => 'https://g.page/r/Cb5ZxGjx41GjEBM/review', // Gympie
+        ];
+
+        // Get the user's location code from session
+        $userLocationCode = $user_data['location'] ?? '';
+        
+        // Find the review URL based on location code
+        $reviewUrl = $reviewMap[$userLocationCode] ?? '';
+        
+        // Fallback to Nambour if no match found
+        if ($reviewUrl === '') {
+            $reviewUrl = 'https://g.page/r/CTyeCOCwc-3wEAI/review';
+        }
+
+        // Add debug logging to help you test locally
+        log_message('info', 'Moveout email debug - Location Code: ' . $userLocationCode . ', Review URL: ' . $reviewUrl);
 
         $mail->Body = '<html><body>'
             . '<p>Dear ' . htmlspecialchars($userName) . ',</p>'

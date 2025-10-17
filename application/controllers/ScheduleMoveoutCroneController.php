@@ -8,6 +8,7 @@ class ScheduleMoveoutCroneController extends CI_Controller
         parent::__construct();
         $this->load->library('email');
         $this->load->database();
+        $this->ensureReminderTable();
     }
 
     // Function to send move out reminders using SOAP API data
@@ -25,7 +26,23 @@ class ScheduleMoveoutCroneController extends CI_Controller
             
             if (!empty($scheduledMoveouts)) {
                 foreach ($scheduledMoveouts as $moveout) {
-                    $this->sendScheduleMoveoutReminderEmail($moveout);
+                    $tenantId = isset($moveout['tenant_id']) ? (int)$moveout['tenant_id'] : 0;
+                    $moveoutDate = isset($moveout['moveout_date']) ? date('Y-m-d', strtotime($moveout['moveout_date'])) : null;
+
+                    if ($tenantId <= 0 || empty($moveoutDate)) {
+                        // Skip invalid data rows
+                        continue;
+                    }
+
+                    if ($this->hasReminderBeenSent($tenantId, $moveoutDate)) {
+                        // Already sent for this tenant and date; skip to avoid duplicates
+                        continue;
+                    }
+
+                    $sent = $this->sendScheduleMoveoutReminderEmail($moveout);
+                    if ($sent) {
+                        $this->markReminderSent($tenantId, $moveoutDate);
+                    }
                 }
             }
         }
@@ -131,6 +148,37 @@ class ScheduleMoveoutCroneController extends CI_Controller
         ";
         
         $this->email->message($message);
-        $this->email->send();
+        return $this->email->send();
+    }
+
+    private function ensureReminderTable()
+    {
+        // Ensure the tracking table exists; keeps the cron idempotent across runs
+        $this->db->query('
+            CREATE TABLE IF NOT EXISTS `schedule_moveout_reminders_sent` (
+              `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+              `tenant_id` INT NOT NULL,
+              `moveout_date` DATE NOT NULL,
+              `sent_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `uniq_tenant_date` (`tenant_id`, `moveout_date`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ');
+    }
+
+    private function hasReminderBeenSent($tenantId, $moveoutDate)
+    {
+        $this->db->from('schedule_moveout_reminders_sent');
+        $this->db->where('tenant_id', $tenantId);
+        $this->db->where('moveout_date', $moveoutDate);
+        return $this->db->count_all_results() > 0;
+    }
+
+    private function markReminderSent($tenantId, $moveoutDate)
+    {
+        $this->db->insert('schedule_moveout_reminders_sent', [
+            'tenant_id' => $tenantId,
+            'moveout_date' => $moveoutDate,
+        ]);
     }
 }
