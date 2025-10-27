@@ -540,7 +540,7 @@ class PaymentController extends CI_Controller
     private function multipleSourcePayment($tenant_id, $location, $creditCardTypeID, $creditCardNum, $creditCardExpire, $creditCardHolderName, $creditCardCVV, $sUnitIDs, $sPaymentAmounts)
     {
         $curl = curl_init();
-        echo "<pre>"; print_r($sUnitIDs); die;
+        // echo "<pre>"; print_r($tenant_id); die;
         curl_setopt_array($curl, array(
             CURLOPT_URL => 'https://api.smdservers.net/CCWs_3.5/CallCenterWs.asmx',
             CURLOPT_RETURNTRANSFER => true,
@@ -578,6 +578,7 @@ class PaymentController extends CI_Controller
         ));
 
         $response = curl_exec($curl);
+        echo "<pre>"; print_r($response); die;
         curl_close($curl);
         return $response;
     }

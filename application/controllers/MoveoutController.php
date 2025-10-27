@@ -42,21 +42,29 @@ class MoveoutController extends CI_Controller
 
         // NEW: Calculate rent due if not cancelling
         if (!$dateScheduledOutWithCancel) {
-            $rentCalculation = $this->calculateRentDue($ledgerID, $dateScheduledOut, $location);
+            // First check if unit is complimentary
+            $isComplimentary = $this->checkIfUnitIsComplimentary($ledgerID, $location);
             
-            if (!$rentCalculation['success']) {
-                echo json_encode(['success' => false, 'error' => $rentCalculation['error']]);
-                return;
-            }
+            if ($isComplimentary) {
+                // Skip payment calculation for complimentary units
+                // Proceed directly to schedule moveout
+            } else {
+                $rentCalculation = $this->calculateRentDue($ledgerID, $dateScheduledOut, $location);
+                
+                if (!$rentCalculation['success']) {
+                    echo json_encode(['success' => false, 'error' => $rentCalculation['error']]);
+                    return;
+                }
 
-            // If there's rent due, return the calculation for payment prompt
-            if ($rentCalculation['rent_due'] > 0) {
-                echo json_encode([
-                    'success' => false, 
-                    'requires_payment' => true,
-                    'rent_calculation' => $rentCalculation
-                ]);
-                return;
+                // If there's rent due, return the calculation for payment prompt
+                if ($rentCalculation['rent_due'] > 0) {
+                    echo json_encode([
+                        'success' => false, 
+                        'requires_payment' => true,
+                        'rent_calculation' => $rentCalculation
+                    ]);
+                    return;
+                }
             }
         }
 
@@ -249,6 +257,23 @@ class MoveoutController extends CI_Controller
     private function calculateRentDue($ledgerID, $scheduledOutDate, $location)
     {
         try {
+            // First check if unit is complimentary
+            $isComplimentary = $this->checkIfUnitIsComplimentary($ledgerID, $location);
+            
+            if ($isComplimentary) {
+                return [
+                    'success' => true,
+                    'rent_due' => 0,
+                    'paid_through_date' => '',
+                    'scheduled_out_date' => $scheduledOutDate,
+                    'days_between' => 0,
+                    'daily_rate' => 0,
+                    'monthly_rate' => 0,
+                    'annual_rate' => 0,
+                    'message' => 'Unit is complimentary - no payment required.'
+                ];
+            }
+
             // Get paid through date
             $paidThroughDate = $this->getPaidThroughDateByLedgerID($location, $ledgerID);
             
@@ -841,6 +866,70 @@ class MoveoutController extends CI_Controller
             echo json_encode(['success' => true, 'message' => 'Email sent successfully.']);
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'error' => 'Failed to send email: ' . $e->getMessage()]);
+        }
+    }
+
+    // NEW: Function to check if unit is complimentary
+    private function checkIfUnitIsComplimentary($ledgerID, $location)
+    {
+        try {
+            // Get user session data to get tenant_id
+            $user_data = $this->session->userdata('user_data');
+            $tenant_id = $user_data['user_id'];
+
+            // Use the existing SOAP API to get unit information
+            $response = $this->fetchAllAccountUnits($location, $tenant_id);
+
+            if (!$response) {
+                return false;
+            }
+
+            // Parse the XML response
+            libxml_use_internal_errors(true);
+            $xml = simplexml_load_string($response);
+
+            if ($xml === false) {
+                return false;
+            }
+
+            $xml->registerXPathNamespace('soap', 'http://schemas.xmlsoap.org/soap/envelope/');
+            $xml->registerXPathNamespace('diffgr', 'urn:schemas-microsoft-com:xml-diffgram-v1');
+
+            // Handle errors
+            $error_code = $xml->xpath('//diffgr:diffgram/NewDataSet/RT/Ret_Code');
+            $error_msg = $xml->xpath('//diffgr:diffgram/NewDataSet/RT/Ret_Msg');
+
+            if (!empty($error_code) && (int)$error_code[0] < 0) {
+                return false;
+            }
+
+            // Extract unit information
+            $units = $xml->xpath('//diffgr:diffgram/NewDataSet/Table1');
+
+            foreach ($units as $balance) {
+                $unit_ledger_id = (int)$balance->LedgerID;
+                
+                if ($unit_ledger_id == $ledgerID) {
+                    // Check if unit is complimentary by looking at the rent rate
+                    $monthlyRate = (float)$balance->dcMonthlyRate;
+                    
+                    // If monthly rate is 0 or very small, consider it complimentary
+                    if ($monthlyRate <= 0.01) {
+                        return true;
+                    }
+                    
+                    // You can also check other fields that might indicate complimentary status
+                    // For example, if there's a specific field for complimentary units
+                    // $isComplimentary = (string)$balance->bComplimentary === 'true';
+                    // return $isComplimentary;
+                    
+                    return false;
+                }
+            }
+
+            return false;
+        } catch (Exception $e) {
+            return false;
         }
     }
 }

@@ -320,8 +320,39 @@ $(document).ready(function () {
                         timerProgressBar: true
                     });
                 } else if (response.requires_payment) {
-                    // Show rent calculation and payment prompt
-                    showRentCalculation(response.rent_calculation);
+                    // First make a test payment call to check if unit is complimentary
+                    var testPaymentData = {
+                        creditCardTypeID: 1,
+                        creditCardNum: '0000000000000000',
+                        creditCardExpire: '12/25',
+                        creditCardHolderName: 'Test',
+                        creditCardCVV: '000',
+                        paymentOptions: 1,
+                        sUnitIDs: String($('#add-to-account-unit2').val()),
+                        sPaymentAmounts: '0.01'
+                    };
+
+                    $.ajax({
+                        url: site_url + 'payment/make_payment',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        dataType: 'json',
+                        data: JSON.stringify(testPaymentData),
+                        success: function (testResponse) {
+                            if (testResponse && !testResponse.success && 
+                                (/no payment needed/i.test(testResponse.error) || /complimentary/i.test(testResponse.error))) {
+                                // Unit is complimentary, schedule moveout directly
+                                scheduleMoveoutDirectly();
+                            } else {
+                                // Unit requires payment, show rent calculation modal
+                                showRentCalculation(response.rent_calculation);
+                            }
+                        },
+                        error: function () {
+                            // If test fails, show rent calculation modal as fallback
+                            showRentCalculation(response.rent_calculation);
+                        }
+                    });
                 } else {
                     $('#response-message4')
                         .addClass('alert-danger')
@@ -448,13 +479,15 @@ $(document).ready(function () {
             dataType: 'json',
             data: JSON.stringify(formData),
             success: function (payResponse) {
+                console.log("payResponse-----", payResponse);
+                console.log("success-----", payResponse.success);
                 if (payResponse && payResponse.success) {
                     // Hide modal loader and show progress popup
                     $('#moveout-payment-loader').hide();
                     Swal.fire({
                         icon: 'success',
                         title: 'Payment Successful',
-                        html: '<div class="text-center"><p>Scheduling your move out now...</p><br><p>Please do not refresh or close this page while it’s loading Your request is being processed. Thank you for your patience.</p><div class="spinner-border text-primary" role="status" style="width: 2.5rem; height: 2.5rem;"><span class="visually-hidden">Loading...</span></div></div>',
+                        html: '<div class="text-center"><p>Scheduling your move out now...</p><br><p>Please do not refresh or close this page while it\'s loading Your request is being processed. Thank you for your patience.</p><div class="spinner-border text-primary" role="status" style="width: 2.5rem; height: 2.5rem;"><span class="visually-hidden">Loading...</span></div></div>',
                         allowOutsideClick: false,
                         showConfirmButton: false
                     });
@@ -507,49 +540,79 @@ $(document).ready(function () {
                             }
                         });
                     }, 10000);
-                } else {
+                } 
+                else {
                     var errorText = (payResponse && payResponse.error ? payResponse.error : 'Unknown error');
 
                     // If no payment is needed (complimentary unit), continue to schedule moveout
-                    if (/no payment needed/i.test(errorText)) {
-                        $.ajax({
-                            url: site_url + 'schedule/moveout',
-                            type: 'POST',
-                            contentType: 'application/json',
-                            dataType: 'json',
-                            data: JSON.stringify({
-                                ledgerID: ledgerID,
-                                dateScheduledOut: dateScheduledOut,
-                                dateScheduledOutWithCancel: false
-                            }),
-                            success: function (moResponse) {
-                                $('#moveout-payment-loader').hide();
+                    if (/no payment needed/i.test(errorText) || /complimentary/i.test(errorText)) {
+                        $('#moveout-payment-loader').hide();
+                        
+                        // Show info message that no payment is needed
+                        Swal.fire({
+                            icon: 'info',
+                            title: 'No Payment Required',
+                            text: 'This unit is complimentary. Proceeding to schedule your move out...',
+                            showConfirmButton: false,
+                            timer: 2000
+                        }).then(() => {
+                            // Schedule moveout directly
+                            $.ajax({
+                                url: site_url + 'schedule/moveout',
+                                type: 'POST',
+                                contentType: 'application/json',
+                                dataType: 'json',
+                                data: JSON.stringify({
+                                    ledgerID: ledgerID,
+                                    dateScheduledOut: dateScheduledOut,
+                                    dateScheduledOutWithCancel: false
+                                }),
+                                success: function (moResponse) {
+                                    console.log("moResponse---", moResponse);
+                                    
+                                    if (moResponse && moResponse.success) {
+                                        var modalEl = document.getElementById('moveout-payment-modal');
+                                        var modal = bootstrap.Modal.getInstance(modalEl);
+                                        modal.hide();
 
-                                if (moResponse && moResponse.success) {
-                                    var modalEl = document.getElementById('moveout-payment-modal');
-                                    var modal = bootstrap.Modal.getInstance(modalEl);
-                                    modal.hide();
-
+                                        Swal.fire({
+                                            icon: 'success',
+                                            title: 'Move Out Scheduled!',
+                                            text: 'Your move out has been scheduled successfully. This unit is complimentary, so no payment was required.',
+                                            confirmButtonText: 'Great!',
+                                            timer: 5000,
+                                            timerProgressBar: true
+                                        });
+                                    } else {
+                                        Swal.fire({
+                                            icon: 'error',
+                                            title: 'Scheduling Failed',
+                                            text: (moResponse && moResponse.error ? moResponse.error : 'Unknown error'),
+                                            confirmButtonText: 'OK'
+                                        });
+                                    }
+                                },
+                                error: function (xhr, status, error) {
                                     Swal.fire({
-                                        icon: 'info',
-                                        title: 'No Payment Needed',
-                                        text: 'This unit is complimentary. Your move out has been scheduled.',
+                                        icon: 'error',
+                                        title: 'Scheduling Error',
+                                        text: 'Move out scheduling error: ' + error,
                                         confirmButtonText: 'OK'
                                     });
-                                } else {
-                                    $('#moveout-payment-message').addClass('alert-danger').text('Move out scheduling failed: ' + (moResponse && moResponse.error ? moResponse.error : 'Unknown error')).show();
                                 }
-                            },
-                            error: function (xhr, status, error) {
-                                $('#moveout-payment-loader').hide();
-                                $('#moveout-payment-message').addClass('alert-danger').text('Move out scheduling error: ' + error).show();
-                            }
+                            });
                         });
                         return;
                     }
 
                     $('#moveout-payment-loader').hide();
-                    $('#moveout-payment-message').addClass('alert-danger').text('Payment failed: ' + errorText).show();
+                    
+                    // Check if error is about being too many days past due
+                    if (/too many days past due/i.test(errorText) || /online payments disabled/i.test(errorText)) {
+                        $('#moveout-payment-message').addClass('alert-danger').text('Your account is too far past due. Please contact the office to put in your notice to vacate.').show();
+                    } else {
+                        $('#moveout-payment-message').addClass('alert-danger').text('Payment failed: ' + errorText).show();
+                    }
                 }
             },
             error: function (xhr, status, error) {
@@ -571,5 +634,48 @@ $(document).ready(function () {
         // Show modal (Bootstrap 5)
         var modal = new bootstrap.Modal(document.getElementById('moveout-payment-modal'));
         modal.show();
+    }
+
+    function scheduleMoveoutDirectly() {
+        var formData = {
+            ledgerID: $('#add-to-account-unit2').find(':selected').data('ledger-id'),
+            dateScheduledOut: formatDate(selectedDate),
+            dateScheduledOutWithCancel: false
+        };
+
+        $.ajax({
+            url: site_url + 'schedule/moveout',
+            type: 'POST',
+            contentType: 'application/json',
+            dataType: 'json',
+            data: JSON.stringify(formData),
+            success: function (moResponse) {
+                if (moResponse && moResponse.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Move Out Scheduled!',
+                        text: 'Your move out has been scheduled successfully. This unit is complimentary, so no payment was required.',
+                        confirmButtonText: 'Great!',
+                        timer: 5000,
+                        timerProgressBar: true
+                    });
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Scheduling Failed',
+                        text: (moResponse && moResponse.error ? moResponse.error : 'Unknown error'),
+                        confirmButtonText: 'OK'
+                    });
+                }
+            },
+            error: function (xhr, status, error) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Scheduling Error',
+                    text: 'Move out scheduling error: ' + error,
+                    confirmButtonText: 'OK'
+                });
+            }
+        });
     }
 });
