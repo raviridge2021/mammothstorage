@@ -37,18 +37,24 @@ class MoveoutController extends CI_Controller
 
         $ledgerID = $requestData['ledgerID'];
         $dateScheduledOut = $requestData['dateScheduledOut'];
-        $dateScheduledOutWithCancel = $requestData['dateScheduledOutWithCancel'] ?? false;
+        // $dateScheduledOutWithCancel = $requestData['dateScheduledOutWithCancel'] ?? false;
+        $dateScheduledOutWithCancel = !empty($requestData['dateScheduledOutWithCancel']) && $requestData['dateScheduledOutWithCancel'] !== 'false';
         $location = $user_data['location'];
-
+        // echo "<pre>";print_r($requestData);die();
         // NEW: Calculate rent due if not cancelling
-        if (!$dateScheduledOutWithCancel) {
+        // if (!$dateScheduledOutWithCancel) {
             // First check if unit is complimentary
-            $isComplimentary = $this->checkIfUnitIsComplimentary($ledgerID, $location);
-            
+            // print_r($ledgerID);die();
+            $isComplimentary = $this->isUnitComplimentaryByLedgerID($ledgerID, $location);
+
+            // echo "<pre>";print_r($isComplimentary);die();
+
             if ($isComplimentary) {
+                
                 // Skip payment calculation for complimentary units
                 // Proceed directly to schedule moveout
             } else {
+                
                 $rentCalculation = $this->calculateRentDue($ledgerID, $dateScheduledOut, $location);
                 
                 if (!$rentCalculation['success']) {
@@ -65,9 +71,10 @@ class MoveoutController extends CI_Controller
                     ]);
                     return;
                 }
-            }
+                // echo "<pre>";print_r($rentCalculation);die();
+            // }
         }
-
+        
         // Prepare the SOAP request
         $response = $this->updateScheduledOut($location, $ledgerID, $dateScheduledOut, $dateScheduledOutWithCancel);
         if (!$response) {
@@ -235,7 +242,7 @@ class MoveoutController extends CI_Controller
                     <iCreditCardType>1</iCreditCardType>
                     <sCreditCardNumber>0000000000000000</sCreditCardNumber>
                     <sCreditCardCVV>000</sCreditCardCVV>
-                    <dExpirationDate>12/25</dExpirationDate>
+                    <dExpirationDate>2025-12-25</dExpirationDate>
                     <sBillingName>Moveout Payment</sBillingName>
                     <bTestMode>true</bTestMode>
                     <iSource>10</iSource>
@@ -258,12 +265,14 @@ class MoveoutController extends CI_Controller
     {
         try {
             // First check if unit is complimentary
-            $isComplimentary = $this->checkIfUnitIsComplimentary($ledgerID, $location);
+            $isComplimentary = $this->isUnitComplimentaryByLedgerID($ledgerID, $location);
             
             if ($isComplimentary) {
                 return [
                     'success' => true,
                     'rent_due' => 0,
+                    'total_current_due' => 0,
+                    'total_owing' => 0,
                     'paid_through_date' => '',
                     'scheduled_out_date' => $scheduledOutDate,
                     'days_between' => 0,
@@ -283,9 +292,16 @@ class MoveoutController extends CI_Controller
 
             // Get unit rent rate from database using UnitID
             $unitRentRate = $this->getUnitRentRateByLedgerID($ledgerID, $location);
-            
+            // echo "<pre>";print_r($unitRentRate);die();
             if (!$unitRentRate) {
                 return ['success' => false, 'error' => 'Could not retrieve unit rent rate.'];
+            }
+
+            // NEW: Get total current due amount
+            $totalCurrentDue = $this->getTotalCurrentDue($location, $ledgerID);
+            // echo "<pre>";print_r($totalCurrentDue);die();
+            if ($totalCurrentDue === null) {
+                return ['success' => false, 'error' => 'Could not retrieve current due amount.'];
             }
 
             // Convert dates for calculation
@@ -296,23 +312,7 @@ class MoveoutController extends CI_Controller
                 return ['success' => false, 'error' => 'Invalid date format.'];
             }
 
-            // Calculate days between paid through and scheduled out
-            $interval = $paidThrough->diff($scheduledOut);
-            $daysBetween = $interval->days;
-
-            if ($daysBetween <= 0) {
-                return [
-                    'success' => true,
-                    'rent_due' => 0,
-                    'paid_through_date' => $paidThroughDate,
-                    'scheduled_out_date' => $scheduledOutDate,
-                    'days_between' => 0,
-                    'daily_rate' => 0,
-                    'message' => 'No rent due - move out date is on or before paid through date.'
-                ];
-            }
-
-                        // Calculate days between paid through and scheduled out (SIGNED)
+            // Calculate days between paid through and scheduled out (SIGNED)
             // If scheduledOut is on or before paidThrough, no rent is due.
             $daysBetween = (int)$paidThrough->diff($scheduledOut)->format('%r%a');
 
@@ -320,10 +320,14 @@ class MoveoutController extends CI_Controller
                 return [
                     'success' => true,
                     'rent_due' => 0,
+                    'total_current_due' => $totalCurrentDue,
+                    'total_owing' => $totalCurrentDue,
                     'paid_through_date' => $paidThroughDate,
                     'scheduled_out_date' => $scheduledOutDate,
                     'days_between' => 0,
                     'daily_rate' => 0,
+                    'monthly_rate' => $unitRentRate,
+                    'annual_rate' => $unitRentRate * 12,
                     'message' => 'No rent due - move out date is on or before paid through date.'
                 ];
             }
@@ -332,17 +336,22 @@ class MoveoutController extends CI_Controller
             $annualRate = $unitRentRate * 12; // Monthly rate * 12 months
             $dailyRate = $annualRate / 365;   // Annual rate / 365 days
             $rentDue = $daysBetween * $dailyRate; // Days * daily rate
+            
+            // Calculate total owing (rent due + current due)
+            $totalOwing = $rentDue + $totalCurrentDue;
 
             return [
                 'success' => true,
                 'rent_due' => round($rentDue, 3), // Round to 3 decimal places
+                'total_current_due' => round($totalCurrentDue, 2),
+                'total_owing' => round($totalOwing, 2),
                 'paid_through_date' => $paidThroughDate,
                 'scheduled_out_date' => $scheduledOutDate,
                 'days_between' => $daysBetween,
                 'monthly_rate' => round($unitRentRate, 3),
                 'annual_rate' => round($annualRate, 3),
                 'daily_rate' => round($dailyRate, 3),
-                'message' => "Rent due: $" . round($rentDue, 3) . " for " . $daysBetween . " days"
+                'message' => "Rent due: $" . round($rentDue, 3) . " for " . $daysBetween . " days + Current due: $" . round($totalCurrentDue, 2)
             ];
 
         } catch (Exception $e) {
@@ -350,71 +359,199 @@ class MoveoutController extends CI_Controller
         }
     }
 
+    // NEW: Function to get total current due for a specific ledger
+    private function getTotalCurrentDue($location, $ledgerID)
+    {
+        try {
+            // Get user session data to get tenant_id
+            $user_data = $this->session->userdata('user_data');
+            $tenant_id = $user_data['user_id'];
+
+            // Use the existing SOAP API to get account balance
+            $response = $this->fetchAllAccountUnits($location, $tenant_id);
+
+            if (!$response) {
+                return null;
+            }
+
+            // Parse the XML response
+            libxml_use_internal_errors(true);
+            $xml = simplexml_load_string($response);
+
+            if ($xml === false) {
+                return null;
+            }
+
+            $xml->registerXPathNamespace('soap', 'http://schemas.xmlsoap.org/soap/envelope/');
+            $xml->registerXPathNamespace('diffgr', 'urn:schemas-microsoft-com:xml-diffgram-v1');
+
+            // Handle errors
+            $error_code = $xml->xpath('//diffgr:diffgram/NewDataSet/RT/Ret_Code');
+            $error_msg = $xml->xpath('//diffgr:diffgram/NewDataSet/RT/Ret_Msg');
+
+            if (!empty($error_code) && (int)$error_code[0] < 0) {
+                return null;
+            }
+
+            // Extract balance information and sum ALL balances (like the UI does)
+            $balances = $xml->xpath('//diffgr:diffgram/NewDataSet/Table1');
+            $totalBalance = 0;
+
+            foreach ($balances as $balance) {
+                $balance_amount = (float)$balance->dcBalance;
+                $totalBalance += $balance_amount;
+            }
+
+            return $totalBalance; // Return total of all balances
+            
+        } catch (Exception $e) {
+            return null;
+        }
+    }
+
     // NEW: Function to get unit rent rate from SOAP API using LedgerID
     private function getUnitRentRateByLedgerID($ledgerID, $location)
     {
-        // Get user session data to get tenant_id
+        // Get tenant_id from session
         $user_data = $this->session->userdata('user_data');
+        if (!$user_data || empty($user_data['user_id'])) {
+            return null;
+        }
         $tenant_id = $user_data['user_id'];
 
-        // Use the UnitsInformation SOAP API to get unit information with rent rates
-        $response = $this->fetchUnitsInformation($location);
+        // Fetch 1-month and 2-month prepay XML
+        $xml1 = $this->fetchCustomerAccountsBalanceDetailsWithPrepayment($location, $tenant_id, 1);
+        $xml2 = $this->fetchCustomerAccountsBalanceDetailsWithPrepayment($location, $tenant_id, 2);
 
-        if (!$response) {
-            return null;
-        }
+        $getBalanceFor = function($xmlStr) use ($ledgerID) {
+            if (!$xmlStr) return 0.0;
 
-        // Parse the XML response
-        libxml_use_internal_errors(true);
-        $xml = simplexml_load_string($response);
+            libxml_use_internal_errors(true);
+            $xml = simplexml_load_string($xmlStr);
+            if ($xml === false) return 0.0;
 
-        if ($xml === false) {
-            return null;
-        }
+            $xml->registerXPathNamespace('soap', 'http://schemas.xmlsoap.org/soap/envelope/');
+            $xml->registerXPathNamespace('diffgr', 'urn:schemas-microsoft-com:xml-diffgram-v1');
 
-        $xml->registerXPathNamespace('soap', 'http://schemas.xmlsoap.org/soap/envelope/');
-        $xml->registerXPathNamespace('diffgr', 'urn:schemas-microsoft-com:xml-diffgram-v1');
+            $rows = $xml->xpath('//diffgr:diffgram/NewDataSet/Table1');
+            if (!$rows) return 0.0;
 
-        // Handle errors
-        $error_code = $xml->xpath('//diffgr:diffgram/NewDataSet/RT/Ret_Code');
-        $error_msg = $xml->xpath('//diffgr:diffgram/NewDataSet/RT/Ret_Msg');
-
-        if (!empty($error_code) && (int)$error_code[0] < 0) {
-            return null;
-        }
-
-        // Extract unit information and find the matching unit
-        $units = $xml->xpath('//diffgr:diffgram/NewDataSet/Table');
-
-        // First, get the UnitID for this ledger from account balance API
-        $unitID = $this->getUnitIDByLedgerID($ledgerID, $location);
-        
-        if (!$unitID) {
-            return null;
-        }
-
-        // Now find the rent rate for this UnitID
-        foreach ($units as $unit) {
-            $unit_id = (int)$unit->UnitID;
-            
-            if ($unit_id == $unitID) {
-                $standard_rate = (float)$unit->dcStdRate;
-                $tax_rate = (float)$unit->dcTax1Rate;
-                $tax_amount = $standard_rate * ($tax_rate / 100);
-                $total_rate_with_tax = $standard_rate + $tax_amount;
-                
-                // Debug output
-                // echo "<h4>Rate Calculation:</h4>";
-                // echo "Standard Rate: $" . $standard_rate . "<br>";
-                // echo "Tax Rate: " . $tax_rate . "%<br>";
-                // echo "Tax Amount: $" . round($tax_amount, 2) . "<br>";
-                // echo "Total Rate (with tax): $" . round($total_rate_with_tax, 2) . "<br>";
-                
-                return $total_rate_with_tax;
+            $sum = 0.0;
+            foreach ($rows as $row) {
+                $rowLedgerId = isset($row->LedgerID) ? (int)$row->LedgerID : null;
+                $item = isset($row->sItem) ? (string)$row->sItem : '';
+                if ($rowLedgerId === (int)$ledgerID && $item === 'Rent') {
+                    $sum += isset($row->dcBalance) ? (float)$row->dcBalance : 0.0;
+                }
             }
-        }
+            return $sum;
+        };
 
-        return null;
+        $one = $getBalanceFor($xml1);
+        $two = $getBalanceFor($xml2);
+
+        return round($two - $one, 2); // e.g., 15.00 - 10.00 = 5.00
+    }
+
+private function extractRentBalancesByUnit($xmlString)
+{
+	$balancesByUnit = [];
+
+	libxml_use_internal_errors(true);
+	$xml = simplexml_load_string($xmlString);
+	if ($xml === false) {
+		return $balancesByUnit;
+	}
+
+	$xml->registerXPathNamespace('soap', 'http://schemas.xmlsoap.org/soap/envelope/');
+	$xml->registerXPathNamespace('diffgr', 'urn:schemas-microsoft-com:xml-diffgram-v1');
+
+	$error_code = $xml->xpath('//diffgr:diffgram/NewDataSet/RT/Ret_Code');
+	if (!empty($error_code) && (int)$error_code[0] < 0) {
+		return $balancesByUnit;
+	}
+
+	$rows = $xml->xpath('//diffgr:diffgram/NewDataSet/Table1');
+	if (!$rows) {
+		return $balancesByUnit;
+	}
+
+	foreach ($rows as $row) {
+		$item = isset($row->sItem) ? (string)$row->sItem : '';
+		if ($item !== 'Rent') {
+			continue;
+		}
+		$unitName = isset($row->sUnitName) ? (string)$row->sUnitName : '';
+		$dcBalance = isset($row->dcBalance) ? (float)$row->dcBalance : 0.0;
+
+		if (!isset($balancesByUnit[$unitName])) {
+			$balancesByUnit[$unitName] = 0.0;
+		}
+		$balancesByUnit[$unitName] += $dcBalance;
+	}
+
+	return $balancesByUnit;
+}
+
+/* private function getUnitRentFromPrepayDiff($location, $tenant_id)
+{
+	// Fetch 1-month and 2-month prepay snapshots
+	$oneMonthXml = $this->fetchCustomerAccountsBalanceDetailsWithPrepayment($location, $tenant_id, 1);
+	$twoMonthXml = $this->fetchCustomerAccountsBalanceDetailsWithPrepayment($location, $tenant_id, 2);
+
+	$one = $this->extractRentBalancesByUnit($oneMonthXml);
+	$two = $this->extractRentBalancesByUnit($twoMonthXml);
+
+	$result = [];
+	foreach ($two as $unitName => $twoBal) {
+		$oneBal = isset($one[$unitName]) ? $one[$unitName] : 0.0;
+		$result[$unitName] = round($twoBal - $oneBal, 2);
+	}
+
+	// If any unit is only in 1-month and not in 2-month, ensure it still appears (optional)
+	foreach ($one as $unitName => $oneBal) {
+		if (!isset($result[$unitName])) {
+			$result[$unitName] = round(0.0 - $oneBal, 2);
+		}
+	}
+
+	return $result; // e.g., ['069' => 5.00, '1190' => 10.00]
+} */
+
+    private function fetchCustomerAccountsBalanceDetailsWithPrepayment($location, $tenant_id, $number_of_future_periods = 1)
+    {
+        $curl = curl_init();
+        curl_setopt_array($curl, array(
+            CURLOPT_URL => 'https://api.smdservers.net/CCWs_3.5/CallCenterWs.asmx',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_ENCODING => '',
+            CURLOPT_MAXREDIRS => 10,
+            CURLOPT_TIMEOUT => 0,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            CURLOPT_CUSTOMREQUEST => 'POST',
+            CURLOPT_POSTFIELDS => '
+            <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+              <soap:Body>
+                <CustomerAccountsBalanceDetailsWithPrepayment xmlns="http://tempuri.org/CallCenterWs/CallCenterWs">
+                  <sCorpCode>CCBZ</sCorpCode>
+                  <sLocationCode>' . $location . '</sLocationCode>
+                  <sCorpUserName>Ali:::MAMMOTHSW28BGD9OUBBX</sCorpUserName>
+                  <sCorpPassword>Currie131!</sCorpPassword>
+                  <iTenantID>' . $tenant_id . '</iTenantID>
+                  <iNumberOfMonthsPrepay>' . (int)$number_of_future_periods . '</iNumberOfMonthsPrepay>
+                </CustomerAccountsBalanceDetailsWithPrepayment>
+              </soap:Body>
+            </soap:Envelope>',
+            CURLOPT_HTTPHEADER => array(
+                'SOAPAction: http://tempuri.org/CallCenterWs/CallCenterWs/CustomerAccountsBalanceDetailsWithPrepayment',
+                'Content-Type: text/xml; charset=utf-8',
+            ),
+        ));
+
+        $response = curl_exec($curl);
+        curl_close($curl);
+        return $response;
     }
 
     // NEW: Function to fetch account units (reuse existing logic)
@@ -555,7 +692,7 @@ class MoveoutController extends CI_Controller
 
         $mail->setFrom($smtpData['smtpFromEmail'], $smtpData['smtpFromName']);
         $mail->addAddress($user_data['email']);
-        $mail->addAddress('ronakp.dev@gmail.com');
+        // $mail->addAddress('ronakp.dev@gmail.com');
 
         $mail->Subject = 'Move Out Scheduled - Confirmation';
         $mail->isHTML(true);
@@ -658,6 +795,7 @@ class MoveoutController extends CI_Controller
     // Function to make the SOAP request for updating billing info
     private function updateScheduledOut($location, $ledgerID, $dateScheduledOut, $dateScheduledOutWithCancel = false)
     {
+        // echo "updateScheduledOut"; die;
         
         $soapEnvelope = '
     <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
@@ -869,25 +1007,28 @@ class MoveoutController extends CI_Controller
         }
     }
 
-    // NEW: Function to check if unit is complimentary
-    private function checkIfUnitIsComplimentary($ledgerID, $location)
+    // NEW: Function to check if unit is complimentary with debugging
+    private function isUnitComplimentaryByLedgerID($ledgerID, $location)
     {
         try {
-            // Get user session data to get tenant_id
+            if (empty($ledgerID) || empty($location)) {
+                return false;
+            }
+
             $user_data = $this->session->userdata('user_data');
+            if (!$user_data || empty($user_data['user_id'])) {
+                return false;
+            }
             $tenant_id = $user_data['user_id'];
 
-            // Use the existing SOAP API to get unit information
+            // Resolve UnitID for this ledger from balances (tenant-scoped)
             $response = $this->fetchAllAccountUnits($location, $tenant_id);
-
             if (!$response) {
                 return false;
             }
 
-            // Parse the XML response
             libxml_use_internal_errors(true);
             $xml = simplexml_load_string($response);
-
             if ($xml === false) {
                 return false;
             }
@@ -895,41 +1036,210 @@ class MoveoutController extends CI_Controller
             $xml->registerXPathNamespace('soap', 'http://schemas.xmlsoap.org/soap/envelope/');
             $xml->registerXPathNamespace('diffgr', 'urn:schemas-microsoft-com:xml-diffgram-v1');
 
-            // Handle errors
-            $error_code = $xml->xpath('//diffgr:diffgram/NewDataSet/RT/Ret_Code');
-            $error_msg = $xml->xpath('//diffgr:diffgram/NewDataSet/RT/Ret_Msg');
-
-            if (!empty($error_code) && (int)$error_code[0] < 0) {
+            $rows = $xml->xpath('//diffgr:diffgram/NewDataSet/Table1');
+            if (empty($rows)) {
                 return false;
             }
 
-            // Extract unit information
-            $units = $xml->xpath('//diffgr:diffgram/NewDataSet/Table1');
-
-            foreach ($units as $balance) {
-                $unit_ledger_id = (int)$balance->LedgerID;
-                
-                if ($unit_ledger_id == $ledgerID) {
-                    // Check if unit is complimentary by looking at the rent rate
-                    $monthlyRate = (float)$balance->dcMonthlyRate;
-                    
-                    // If monthly rate is 0 or very small, consider it complimentary
-                    if ($monthlyRate <= 0.01) {
-                        return true;
-                    }
-                    
-                    // You can also check other fields that might indicate complimentary status
-                    // For example, if there's a specific field for complimentary units
-                    // $isComplimentary = (string)$balance->bComplimentary === 'true';
-                    // return $isComplimentary;
-                    
-                    return false;
+            $unitID = null;
+            foreach ($rows as $row) {
+                if ((string)$row->LedgerID === (string)$ledgerID) {
+                    $unitID = (int)$row->UnitID;
+                    break;
                 }
             }
+            
+            if (!$unitID) {
+                return false;
+            }
 
-            return false;
-        } catch (Exception $e) {
+            // Use the payment probe method to test if unit is complimentary
+            $probe = $this->probeComplimentaryViaPaymentEnhanced($tenant_id, $location, $unitID);
+            
+            return $probe !== null ? $probe : false;
+
+        } catch (\Throwable $e) {
             return false;
         }
+    }
+
+    private function getFutureChargesInternal(array $unitIDs)
+    {
+        // Build URL to your controller endpoint
+        $url = rtrim(site_url('payment/get_future_charges'), '/');
+        
+        echo "DEBUG: Calling URL: $url<br>";
+        echo "DEBUG: UnitIDs: " . json_encode($unitIDs) . "<br>";
+
+        $payload = json_encode([
+            'unit_ids'   => array_values($unitIDs),
+            'unit_names' => [],  // optional; endpoint ignores or fills it
+        ]);
+        
+        echo "DEBUG: Payload: $payload<br>";
+
+        // Get session cookie to pass authentication
+        $sessionCookie = '';
+        if (isset($_COOKIE[ini_get('session.name')])) {
+            $sessionCookie = ini_get('session.name') . '=' . $_COOKIE[ini_get('session.name')];
+        }
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $payload,
+            CURLOPT_HTTPHEADER => [
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'Cookie: ' . $sessionCookie,
+            ],
+            CURLOPT_SSL_VERIFYHOST => 0,
+            CURLOPT_SSL_VERIFYPEER => 0,
+        ]);
+        
+        echo "DEBUG: Session Cookie: $sessionCookie<br>";
+        
+        $res = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+        
+        echo "DEBUG: HTTP Code: $httpCode<br>";
+        echo "DEBUG: cURL Error: $error<br>";
+        echo "DEBUG: Raw Response: " . htmlspecialchars($res) . "<br>";
+
+        if (!$res) {
+            echo "DEBUG: No response received<br>";
+            return null;
+        }
+
+        $decoded = json_decode($res, true);
+        echo "DEBUG: Decoded Response: " . json_encode($decoded) . "<br>";
+        
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    private function probeComplimentaryViaPaymentEnhanced($tenant_id, $location, $unitID)
+    {
+        // Try small test amount; gateway is authoritative about "no payment due/complimentary"
+        $response = $this->soapPaymentProbe($tenant_id, $location, $unitID, '0.01');
+        if (!$response) return null;
+
+        libxml_use_internal_errors(true);
+        $xml = simplexml_load_string($response);
+        if ($xml === false) return null;
+
+        $xml->registerXPathNamespace('soap', 'http://schemas.xmlsoap.org/soap/envelope/');
+        $xml->registerXPathNamespace('diffgr', 'urn:schemas-microsoft-com:xml-diffgram-v1');
+
+        $codeNodes = $xml->xpath('//diffgr:diffgram/NewDataSet/RT/Ret_Code');
+        $msgNodes  = $xml->xpath('//diffgr:diffgram/NewDataSet/RT/Ret_Msg');
+
+        $code = (!empty($codeNodes)) ? (int)$codeNodes[0] : null;
+        $msg  = (!empty($msgNodes))  ? strtolower((string)$msgNodes[0]) : '';
+
+        // Success (>=0) → probe accepted → NOT complimentary
+        if ($code !== null && $code >= 0) {
+            return false;
+        }
+
+        // Negative code with known "no charge needed" semantics → complimentary
+        $complimentaryHints = [
+            'no payment needed',
+            'no open charges',
+            'no charges due',
+            'compliment',         // matches complimentary/complimented
+            'zero balance only',
+            'cannot take payment for zero',
+            'no rent due',
+            'already paid through',
+            'no current charges',
+        ];
+        foreach ($complimentaryHints as $hint) {
+            if ($msg !== '' && strpos($msg, $hint) !== false) {
+                return true;
+            }
+        }
+
+        // If inconclusive, return null
+        return null;
+    }
+
+    private function soapPaymentProbe($tenant_id, $location, $unitID, $amount)
+    {
+        $curl = curl_init();
+        curl_setopt_array($curl, array(
+            CURLOPT_URL => 'https://api.smdservers.net/CCWs_3.5/CallCenterWs.asmx',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CUSTOMREQUEST => 'POST',
+            CURLOPT_POSTFIELDS => '
+            <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+              <soap:Body>
+                <PaymentMultipleWithSource xmlns="http://tempuri.org/CallCenterWs/CallCenterWs">
+                  <sCorpCode>CCBZ</sCorpCode>
+                  <sLocationCode>' . htmlspecialchars($location, ENT_QUOTES, 'UTF-8') . '</sLocationCode>
+                  <sCorpUserName>Ali:::MAMMOTHSW28BGD9OUBBX</sCorpUserName>
+                  <sCorpPassword>Currie131!</sCorpPassword>
+                  <iTenantID>' . (int)$tenant_id . '</iTenantID>
+                  <sUnitIDs>' . (int)$unitID . '</sUnitIDs>
+                  <sPaymentAmounts>' . $amount . '</sPaymentAmounts>
+                  <iCreditCardType>1</iCreditCardType>
+                  <sCreditCardNumber>0000000000000000</sCreditCardNumber>
+                  <sCreditCardCVV>000</sCreditCardCVV>
+                  <dExpirationDate>2025-12-25</dExpirationDate>
+                  <sBillingName>Test</sBillingName>
+                  <bTestMode>true</bTestMode>
+                  <iSource>10</iSource>
+                </PaymentMultipleWithSource>
+              </soap:Body>
+            </soap:Envelope>',
+            CURLOPT_HTTPHEADER => array(
+                'SOAPAction: http://tempuri.org/CallCenterWs/CallCenterWs/PaymentMultipleWithSource',
+                'Content-Type: text/xml; charset=utf-8',
+            ),
+        ));
+        $r = curl_exec($curl);
+        curl_close($curl);
+        return $r;
+    }
+
+    // Add this method to call the GetFutureCharges SOAP API
+    private function getFutureChargesViaSOAP($location, $tenant_id, $unitIDs)
+    {
+        $curl = curl_init();
+        
+        curl_setopt_array($curl, [
+            CURLOPT_URL => 'https://api.smdservers.net/CCWs_3.5/CallCenterWs.asmx',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_ENCODING => '',
+            CURLOPT_MAXREDIRS => 10,
+            CURLOPT_TIMEOUT => 0,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            CURLOPT_CUSTOMREQUEST => 'POST',
+            CURLOPT_POSTFIELDS => '
+            <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+              <soap:Body>
+                <GetFutureCharges xmlns="http://tempuri.org/CallCenterWs/CallCenterWs">
+                  <sCorpCode>CCBZ</sCorpCode>
+                  <sLocationCode>' . $location . '</sLocationCode>
+                  <sCorpUserName>Ali:::MAMMOTHSW28BGD9OUBBX</sCorpUserName>
+                  <sCorpPassword>Currie131!</sCorpPassword>
+                  <iTenantID>' . $tenant_id . '</iTenantID>
+                  <sUnitIDs>' . implode(',', $unitIDs) . '</sUnitIDs>
+                </GetFutureCharges>
+              </soap:Body>
+            </soap:Envelope>',
+            CURLOPT_HTTPHEADER => [
+                'SOAPAction: http://tempuri.org/CallCenterWs/CallCenterWs/GetFutureCharges',
+                'Content-Type: text/xml; charset=utf-8',
+            ],
+        ]);
+        
+        $response = curl_exec($curl);
+        curl_close($curl);
+        return $response;
     }
 }
