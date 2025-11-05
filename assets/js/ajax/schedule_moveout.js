@@ -136,20 +136,14 @@ $(document).ready(function () {
     	// NEW: Function to show rent calculation with your exact formula
 	function showRentCalculation(rentData) {
 		const rentDue = rentData.rent_due;
+		const totalCurrentDue = rentData.total_current_due || 0;
+		const totalOwing = rentData.total_owing || rentDue;
 		const paidThrough = apiToDisplay(rentData.paid_through_date);
 		const scheduledOut = apiToDisplay(rentData.scheduled_out_date);
 		const daysBetween = rentData.days_between;
 		const dailyRate = rentData.daily_rate;
 		const monthlyRate = rentData.monthly_rate;
 		const annualRate = rentData.annual_rate;
-
-		// Read Total Current Due from the profile card
-		const currentDueText = $('#tenant-total-due').text();
-		const totalCurrentDue = parseCurrency(currentDueText);
-
-		// Compute combined total owing (rent due to move out + current due)
-		// const totalOwing = (parseFloat(rentDue) || 0) + (parseFloat(totalCurrentDue) || 0);
-		const totalOwing = (parseFloat(rentDue) || 0) ;
 
 		Swal.fire({
 			title: 'Rent Payment Required',
@@ -168,8 +162,8 @@ $(document).ready(function () {
 					</div>
 					<div class="card bg-light p-3 mb-3">
 						<p class="mb-1"><strong>Rent Owing to Move Out:</strong> $${Number(rentDue).toFixed(2)}</p>
-						<!-- <p class="mb-1 text-muted"><strong>+ Total Current Due:</strong> $${Number(totalCurrentDue).toFixed(2)}</p> --> 
-						<h4 class="text-primary mt-2"><strong>Total Owing: $${totalOwing.toFixed(2)}</strong></h4>
+						<p class="mb-1"><strong>+ Total Current Due:</strong> $${Number(totalCurrentDue).toFixed(2)}</p> 
+						<h4 class="text-primary mt-2"><strong>Total Owing: $${Number(totalOwing).toFixed(2)}</strong></h4>
 					</div>
 					<p class="text-muted">Payment is required before scheduling your move out.</p>
 				</div>
